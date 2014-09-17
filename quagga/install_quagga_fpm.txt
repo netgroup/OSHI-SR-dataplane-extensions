@@ -1,0 +1,31 @@
+
+// build and install quagga
+
+# groupadd quagga
+# useradd -g quagga -s /bin/false quagga
+# mkdir /etc/quagga
+# mkdir /var/state
+# mkdir /var/state/quagga
+# mkdir /var/log/quagga/
+# touch /var/log/quagga/zebra.log
+# touch /var/log/quagga/ospfd.log
+# chown quagga:quagga /etc/quagga
+# chown quagga:quagga /var/state/quagga
+
+$ cd quagga dir
+$ ./configure --enable-user=quagga --enable-group=quagga --enable-vty-group=quagga --enable-fpm --prefix=/usr --sysconfdir=/etc/quagga --localstatedir=/var/state/quagga
+$ make
+# make install
+# ldconfig
+
+// mv quagga and zebra exec
+# cp zebra/zebra /usr/lib/quagga/zebra
+# cp ospfd/ospfd /usr/lib/quagga/ospfd
+
+// dep, not the full list but only what I was missing
+apt-get install gawk
+apt-get install texinfo
+
+
+// work in progress......
+$ ./configure --enable-user=quagga --enable-group=quagga --enable-vty-group=quagga --enable-fpm --sysconfdir=/etc/quagga --localstatedir=/var/run/quagga --libdir=/usr/lib/quagga/
