@@ -29,6 +29,7 @@
 #include <net/if.h>
 
 #include "fpm/fpm.h"
+#include "of_exec.h"
 
 typedef struct glob_t_
 {
@@ -552,7 +553,7 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
     printf("Metric: %d\n", *ctx->metric);
   }
 
-  for (i = 0; i < ctx->num_nhs; i++) {
+  for (i = 0; i < ctx->num_nhs; i++) { //cosa succede se ho piu robba ???
     nh = &ctx->nhs[i];
 
     if (nh->gateway) {
@@ -562,7 +563,14 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
     if (nh->if_index) {
       char ifname[255];
       printf("Via interface %s index: %d\n", if_indextoname(nh->if_index, ifname), nh->if_index);
+      
+      if (nh->if_index <= 1) 
+        return 0;
+
+      of_add_flow(addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)),"",nh->if_index);
+
     }
+    
   }
 
   return 1;

@@ -20,10 +20,10 @@
 
 # Location of quagga code. This is required because we depend on the
 # header file that defines the FPM interface: fpm/fpm.h.
-QUAGGA_DIR = ../quagga
+QUAGGA_DIR = ../quagga-0.99.23.1
 
-fpm-of : fpm_of.c
-	gcc  -o $@ -g -I$(QUAGGA_DIR) $<
+fpm-of : of_exec.c fpm_of.c  
+	gcc  -o $@ -g -I$(QUAGGA_DIR) fpm_of.c of_exec.c of_exec.h
 
 clean :
 	@-rm -f fpm-of
