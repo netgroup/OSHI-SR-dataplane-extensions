@@ -539,6 +539,8 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
   struct nlmsghdr *hdr;
   struct rtmsg *rtmsg;
   netlink_nh_t *nh;
+
+  flow_data fd;
   int i;
 
   hdr = ctx->hdr;
@@ -547,27 +549,44 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
   if ( rtmsg->rtm_family != AF_INET)
     return 0;
 
+  //only /32 addresses (uncomment this if)
+  // if ( rtmsg->rtm_dst_len != 32 )
+  //   return 0;
+
+  fd.ip = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr ;
+  fd.label = ip_to_label(((struct in_addr*) RTA_DATA(ctx->dest))->s_addr );
+
   printf("Message type %s\n", netlink_msg_type_to_s(hdr->nlmsg_type));
   printf("Addr %s/%d \n",addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)), rtmsg->rtm_dst_len);
+  printf("Addr in hex %x\n", fd.ip );
+  printf("Label in hex %x\n", fd.label );
+  // printf("Sizeof %u\n",sizeof(unsigned long) );
+  
+  //TODO: are this data needed in flow_data struct?
+
   if (ctx->metric) {
     printf("Metric: %d\n", *ctx->metric);
   }
 
-  for (i = 0; i < ctx->num_nhs; i++) { //cosa succede se ho piu robba ???
+  for (i = 0; i < ctx->num_nhs; i++) { 
     nh = &ctx->nhs[i];
+    fd.gateway_ip = 0;
+    fd.port = 0;
 
     if (nh->gateway) {
+      fd.gateway_ip = ((struct in_addr*) RTA_DATA(nh->gateway))->s_addr ;
       printf("Gateway addr %s/%d \n",addr_to_s(rtmsg->rtm_family, RTA_DATA(nh->gateway)), rtmsg->rtm_dst_len);
     }
 
     if (nh->if_index) {
       char ifname[255];
+      fd.port = nh->if_index;
       printf("Via interface %s index: %d\n", if_indextoname(nh->if_index, ifname), nh->if_index);
       
       if (nh->if_index <= 1) 
-        return 0;
+        continue;
 
-      of_add_flow(addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)),"",nh->if_index);
+      of_add_flow(&fd);
 
     }
     

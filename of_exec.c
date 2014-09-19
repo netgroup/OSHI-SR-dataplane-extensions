@@ -4,9 +4,17 @@
 
 
 
-void of_add_flow( const char *addr, const char *gateway, int ifindex ){
+void of_add_flow( flow_data *fd ){
 	char cmd[255];
-	sprintf(cmd,"sudo ovs-ofctl add-flow %s hard_timeout=0,priority=401,in_port=%d,actions=drop", BRIDGE_NAME, ifindex);
+	sprintf(cmd,"sudo ovs-ofctl add-flow %s hard_timeout=0,priority=401,in_port=2,actions=drop", BRIDGE_NAME);
+	printf("%s\n",cmd);
+	system(cmd);
+}
+
+
+void of_del_flow( flow_data *fd ){
+	char cmd[255];
+	sprintf(cmd,"sudo ovs-ofctl del-flow %s hard_timeout=0,priority=401,in_port=2,actions=drop", BRIDGE_NAME);
 	printf("%s\n",cmd);
 	system(cmd);
 }
