@@ -556,7 +556,8 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
   fd.ip = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr ;
   fd.label = ip_to_label(((struct in_addr*) RTA_DATA(ctx->dest))->s_addr );
 
-  printf("Message type %s\n", netlink_msg_type_to_s(hdr->nlmsg_type));
+  printf("Message type: %s\n", netlink_msg_type_to_s(hdr->nlmsg_type));
+  printf("Message protocol: %s\n", netlink_prot_to_s(rtmsg->rtm_protocol));
   printf("Addr %s/%d \n",addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)), rtmsg->rtm_dst_len);
   printf("Addr in hex %x\n", fd.ip );
   printf("Label in hex %x\n", fd.label );
