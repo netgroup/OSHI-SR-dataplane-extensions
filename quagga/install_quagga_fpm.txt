@@ -1,5 +1,36 @@
+//how to upgrade quagga 
+
+// dep, not the full list but only what I was missing
+apt-get install gawk
+apt-get install texinfo
 
 // build and install quagga
+
+$ ./configure --enable-user=quagga --enable-group=quagga --enable-vty-group=quagga --enable-fpm --sysconfdir=/etc/quagga --localstatedir=/var/run/quagga --libdir=/usr/lib/quagga/
+$ make
+# make install
+# ldconfig
+
+// mv quagga and zebra exec
+# cp zebra/zebra /usr/lib/quagga/zebra
+# cp ospfd/ospfd /usr/lib/quagga/ospfd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//old how to
 
 # groupadd quagga
 # useradd -g quagga -s /bin/false quagga
@@ -17,15 +48,3 @@ $ ./configure --enable-user=quagga --enable-group=quagga --enable-vty-group=quag
 $ make
 # make install
 # ldconfig
-
-// mv quagga and zebra exec
-# cp zebra/zebra /usr/lib/quagga/zebra
-# cp ospfd/ospfd /usr/lib/quagga/ospfd
-
-// dep, not the full list but only what I was missing
-apt-get install gawk
-apt-get install texinfo
-
-
-// work in progress......
-$ ./configure --enable-user=quagga --enable-group=quagga --enable-vty-group=quagga --enable-fpm --sysconfdir=/etc/quagga --localstatedir=/var/run/quagga --libdir=/usr/lib/quagga/
