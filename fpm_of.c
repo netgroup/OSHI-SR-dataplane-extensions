@@ -546,13 +546,17 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
   hdr = ctx->hdr;
   rtmsg = ctx->rtmsg;
 
-  if ( rtmsg->rtm_family != AF_INET)
+  if ( rtmsg->rtm_family != AF_INET) {
+    printf("not AF_INET... exit\n");
     return 0;
+  }
 
   // only /32 addresses (uncomment this if)
-  if ( rtmsg->rtm_dst_len != 32 )
+  if ( rtmsg->rtm_dst_len != 32 ) {
+    printf("not a loopback address... exit\n");
     return 0;
-
+  }
+    
   fd.ip = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr ;
   fd.label = ip_to_label(((struct in_addr*) RTA_DATA(ctx->dest))->s_addr );
 
