@@ -29,7 +29,6 @@ $ make
 
 
 
-
 //old how to
 
 # groupadd quagga

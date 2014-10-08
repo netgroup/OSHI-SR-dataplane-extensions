@@ -549,9 +549,9 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
   if ( rtmsg->rtm_family != AF_INET)
     return 0;
 
-  //only /32 addresses (uncomment this if)
-  // if ( rtmsg->rtm_dst_len != 32 )
-  //   return 0;
+  // only /32 addresses (uncomment this if)
+  if ( rtmsg->rtm_dst_len != 32 )
+    return 0;
 
   fd.ip = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr ;
   fd.label = ip_to_label(((struct in_addr*) RTA_DATA(ctx->dest))->s_addr );
@@ -561,7 +561,6 @@ process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
   printf("Addr %s/%d \n",addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)), rtmsg->rtm_dst_len);
   printf("Addr in hex %x\n", fd.ip );
   printf("Label in hex %x\n", fd.label );
-  // printf("Sizeof %u\n",sizeof(unsigned long) );
   
   //TODO: are this data needed in flow_data struct?
 
