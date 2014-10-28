@@ -28,13 +28,17 @@
 
 #include <net/if.h>
 
-#include "fpm/fpm.h"
+#include "fpm.h"
 #include "of_exec.h"
 
+/*
+ * Struttura globale usata per gestire
+ * le socket
+ */
 typedef struct glob_t_
 {
-  int server_sock;
-  int sock;
+  int server_sock; // listening socket
+  int sock; // client socket
 } glob_t;
 
 glob_t glob_space;
