@@ -14,6 +14,8 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <ctype.h>
+#include <unistd.h>
 #include <stdint.h>
 #include <memory.h>
 #include <stdio.h>
@@ -30,11 +32,11 @@
 
 #include "fpm.h"
 #include "of_exec.h"
+#include "log.h"
+#include "utils.h"
 
-/*
- * Struttura globale usata per gestire
- * le socket
- */
+#define NUM_OF(x) (sizeof(x) / sizeof(x[0]))
+
 typedef struct glob_t_
 {
   int server_sock; // listening socket
@@ -44,168 +46,137 @@ typedef struct glob_t_
 glob_t glob_space;
 glob_t *glob = &glob_space;
 
-int log_level = 1;
+static char * get_print_buf (size_t *buf_len){
+  
+	static char print_bufs[16][128];
+	static int counter;
 
-#define log(level, format...)			\
-do {						\
-  if (level <= log_level) {			\
-    fprintf(stderr, format);			\
-    fprintf(stderr, "\n");			\
-  }						\
-} while (0);
+	counter++;
+	if (counter >= 16) {
+		counter = 0;
+	}
 
-#define NUM_OF(x) (sizeof(x) / sizeof(x[0]))
-
-#define warn_msg(format...) log(0, format)
-#define err_msg(format...) log(-1, format)
-#define trace log
-
-/*
- * get_print_buf
- */
-static char *
-get_print_buf (size_t *buf_len)
-{
-  static char print_bufs[16][128];
-  static int counter;
-
-  counter++;
-  if (counter >= 16) {
-    counter = 0;
-  }
-
-  *buf_len = 128;
-  return &print_bufs[counter][0];
+	*buf_len = 128;
+	return &print_bufs[counter][0];
 }
 
-/*
- * create_listen_sock
- */
-int
-create_listen_sock (int port, int *sock_p)
-{
-  int sock;
-  struct sockaddr_in addr;
-  int reuse;
+int create_listen_sock (int port, int *sock_p){
+	int sock;
+	struct sockaddr_in addr;
+	int reuse;
 
-  sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (sock < 0) {
-    err_msg(0, "Failed to create socket: %s", strerror(errno));
-    return 0;
-  }
+	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock < 0) {
+		log_to_file(-1, "Failed to create socket: %s\n", strerror(errno));
+		return 0;
+	}
 
-  reuse = 1;
-  if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
-    {
-      warn_msg("Failed to set reuse addr option: %s", strerror(errno));
-    }
+	reuse = 1;
+	if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0){
+		log_to_file(0, "Failed to set reuse addr option: %s\n", strerror(errno));
+		return 0;
+	}
 
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  addr.sin_port = htons(port);
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin_port = htons(port);
 
-  if (bind(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-    err_msg("Failed to bind to port %d: %s", port, strerror(errno));
-    close(sock);
-    return 0;
-  }
+	if (bind(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		log_to_file(-1, "Failed to bind to port %d: %s\n", port, strerror(errno));
+		close(sock);
+		return 0;
+	}
 
-  if (listen(sock, 5)) {
-    err_msg("Failed to listen on socket: %s", strerror(errno));
-    close(sock);
-    return 0;
-  }
+	if (listen(sock, 5)) {
+		log_to_file(-1, "Failed to listen on socket: %s\n", strerror(errno));
+		close(sock);
+		return 0;
+	}
 
-  *sock_p = sock;
-  return 1;
+	*sock_p = sock;
+	return 1;
 }
 
 /*
  * accept_conn
  */
-int
-accept_conn (int listen_sock)
-{
-  int sock;
-  struct sockaddr_in client_addr;
-  unsigned int client_len; 
+int accept_conn (int listen_sock){
+	int sock;
+	struct sockaddr_in client_addr;
+	unsigned int client_len; 
 
-  while (1) {
-    trace(1, "Waiting for client connection...");
-    client_len = sizeof(client_addr);
-    sock = accept(listen_sock, (struct sockaddr *) &client_addr,
-		&client_len);
+	while (1) {
+		log_to_file( 1, "Waiting for client connection...\n");
+		client_len = sizeof(client_addr);
+		sock = accept(listen_sock, (struct sockaddr *) &client_addr, &client_len);
 
-    if (sock >= 0) {
-      trace(1, "Accepted client %s", inet_ntoa(client_addr.sin_addr));
-      return sock;
-    }
-    
-    err_msg("Failed to accept socket: %s",  strerror(errno));
-  }
+		if (sock >= 0) {
+			log_to_file( 1, "Accepted client %s\n", inet_ntoa(client_addr.sin_addr));
+			return sock;
+		}
+
+		log_to_file(-1, "Failed to accept socket: %s\n",  strerror(errno));
+	}
 
 }
 
 /*
  * read_fpm_msg
  */
-fpm_msg_hdr_t *
-read_fpm_msg (char *buf, size_t buf_len)
-{
-  char *cur, *end;
-  int need_len, bytes_read, have_len;
-  fpm_msg_hdr_t *hdr;
-  int reading_full_msg;
+fpm_msg_hdr_t * read_fpm_msg (char *buf, size_t buf_len){
+	char *cur, *end;
+	int need_len, bytes_read, have_len;
+	fpm_msg_hdr_t *hdr;
+	int reading_full_msg;
 
-  end = buf + buf_len;
-  cur = buf;
-  hdr = (fpm_msg_hdr_t *) buf;
+	end = buf + buf_len;
+	cur = buf;
+	hdr = (fpm_msg_hdr_t *) buf;
 
-  while (1) {
-    reading_full_msg = 0;
+	while (1) {
+		reading_full_msg = 0;
 
-    have_len = cur - buf;
+		have_len = cur - buf;
 
-    if (have_len < FPM_MSG_HDR_LEN) {
-      need_len = FPM_MSG_HDR_LEN - have_len;
-    } else {
-      need_len = fpm_msg_len(hdr) - have_len;
-      assert(need_len >= 0 && need_len < (end - cur));
+		if (have_len < FPM_MSG_HDR_LEN) {
+			need_len = FPM_MSG_HDR_LEN - have_len;
+		} else {
+			need_len = fpm_msg_len(hdr) - have_len;
+			assert(need_len >= 0 && need_len < (end - cur));
 
-      if (!need_len)
-	return hdr;
+			if (!need_len)
+				return hdr;
 
-      reading_full_msg = 1;
-    }
+			reading_full_msg = 1;
+		}
 
-    trace(3, "Looking to read %d bytes", need_len);
-    bytes_read = read(glob->sock, cur, need_len);
+		log_to_file( 3, "Looking to read %d bytes\n", need_len);
+		bytes_read = read(glob->sock, cur, need_len);
 
-    if (bytes_read <= 0) {
-      err_msg("Error reading from socket: %s", strerror(errno));
-      return NULL;
-    }
+		if (bytes_read <= 0) {
+			log_to_file(-1, "Error reading from socket: %s\n", strerror(errno));
+			return NULL;
+		}
 
-    trace(3, "Read %d bytes", bytes_read);
-    cur += bytes_read;
+		log_to_file( 3, "Read %d bytes\n", bytes_read);
+		cur += bytes_read;
 
-    if (bytes_read < need_len) {
-      continue;
-    }
+		if (bytes_read < need_len) {
+			continue;
+		}
 
-    assert(bytes_read == need_len);
+		assert(bytes_read == need_len);
 
-    if (reading_full_msg)
-      return hdr;
+		if (reading_full_msg)
+			return hdr;
 
-    if (!fpm_msg_ok(hdr, buf_len))
-      {
-	assert(0);
-	err_msg("Malformed fpm message");
-	return NULL;
-      }
-  }
+		if (!fpm_msg_ok(hdr, buf_len)){
+			assert(0);
+			log_to_file(-1, "Malformed fpm message\n");
+			return NULL;
+		}
+	}
 
 }
 
@@ -331,7 +302,7 @@ parse_rtattrs_ (struct rtattr *rta, size_t len, struct rtattr**rtas,
     }
 
     if (rta->rta_type >= num_rtas) {
-      warn("Unknown rtattr type %d", rta->rta_type);
+      log_to_file(0, "Unknown rtattr type %d", rta->rta_type);
       continue;
     }
 
@@ -368,7 +339,7 @@ netlink_msg_ctx_add_nh (netlink_msg_ctx_t *ctx, int if_index,
   netlink_nh_t *nh;
 
   if (ctx->num_nhs + 1 >= NUM_OF(ctx->nhs)) {
-    warn("Too many next hops");
+    log_to_file(0, "Too many next hops");
     return 0;
   }
   nh = &ctx->nhs[ctx->num_nhs];
@@ -507,7 +478,7 @@ netlink_msg_ctx_snprint (netlink_msg_ctx_t *ctx, char *buf, size_t buf_len)
   cur = buf;
   end = buf + buf_len;
   
-  cur += snprintf(cur, end - cur, "%s %s/%d, Prot: %s",
+  cur += snprintf(cur, end - cur, "Nl type:%s, Dst:%s/%d, Prot: %s",
 		  netlink_msg_type_to_s(hdr->nlmsg_type),
 		  addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)),
 		  rtmsg->rtm_dst_len,
@@ -518,16 +489,17 @@ netlink_msg_ctx_snprint (netlink_msg_ctx_t *ctx, char *buf, size_t buf_len)
   }
 
   for (i = 0; i < ctx->num_nhs; i++) {
-    cur += snprintf(cur, end - cur, "\n ");
+    cur += snprintf(cur, end - cur, ", ");
     nh = &ctx->nhs[i];
 
     if (nh->gateway) {
-      cur += snprintf(cur, end - cur, " %s",
+      cur += snprintf(cur, end - cur, "Gw:%s, ",
 		      addr_to_s(rtmsg->rtm_family, RTA_DATA(nh->gateway)));
     }
 
     if (nh->if_index) {
-      cur += snprintf(cur, end - cur, " via interface %d", nh->if_index);
+		char ifname[255];
+      	cur += snprintf(cur, end - cur, "Via:%s, index:%d", if_indextoname(nh->if_index, ifname), nh->if_index);
     }
   }
 
@@ -538,82 +510,113 @@ netlink_msg_ctx_snprint (netlink_msg_ctx_t *ctx, char *buf, size_t buf_len)
  * process_netlink_msg_ctx
  */
 int
-process_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
-{
-  struct nlmsghdr *hdr;
-  struct rtmsg *rtmsg;
-  netlink_nh_t *nh;
+process_netlink_msg_ctx (netlink_msg_ctx_t *ctx){
+	struct nlmsghdr *hdr;
+	struct rtmsg *rtmsg;
+	netlink_nh_t *nh;
 
-  flow_data fd;
-  int i;
+	hdr = ctx->hdr;
+	rtmsg = ctx->rtmsg;
 
-  hdr = ctx->hdr;
-  rtmsg = ctx->rtmsg;
+	if ( rtmsg->rtm_family != AF_INET) {
+		log_to_file(2, "No AF_INET family\n");
+		return 0;
+	}
 
-  if ( rtmsg->rtm_family != AF_INET) {
-    printf("not AF_INET... exit\n");
-    return 0;
-  }
+	if ( rtmsg->rtm_dst_len != 32 ) {
+		log_to_file(2, "No Loopback prefix\n", rtmsg->rtm_dst_len);
+		return 0;
+	}
 
-  // only /32 addresses (uncomment this if)
-  if ( rtmsg->rtm_dst_len != 32 ) {
-    printf("not a loopback address... exit\n");
-    return 0;
-  }
-    
-  fd.ip = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr ;
-  fd.label = ip_to_label(((struct in_addr*) RTA_DATA(ctx->dest))->s_addr );
+	flow_data* fd_end = NULL;
 
-  printf("Message type: %s\n", netlink_msg_type_to_s(hdr->nlmsg_type));
-  printf("Message protocol: %s\n", netlink_prot_to_s(rtmsg->rtm_protocol));
-  printf("Addr %s/%d \n",addr_to_s(rtmsg->rtm_family, RTA_DATA(ctx->dest)), rtmsg->rtm_dst_len);
-  printf("Addr in hex %x\n", fd.ip );
-  printf("Label in hex %x\n", fd.label );
-  
-  //TODO: are this data needed in flow_data struct?
+	switch (hdr->nlmsg_type) {
+			case RTM_DELROUTE:			
+				fd_end = (flow_data*) malloc(sizeof(flow_data));
+				break;
+			case RTM_NEWROUTE:	
+				fd_end = (flow_data*) malloc((sizeof(flow_data)*ctx->num_nhs));
+				break;
+	}
+	int i;
+	char ifname[255];
+	
+	int temp;
+	flow_data* fd_start = fd_end;
+	in_addr_t ip_temp;
 
-  if (ctx->metric) {
-    printf("Metric: %d\n", *ctx->metric);
-  }
+	/*
+	 * Flow data generation;
+	 *
+	 */
+	switch (hdr->nlmsg_type) {
+			case RTM_DELROUTE:			
+				ip_temp = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr; 
+				fd_end->ip = ntohl((uint32_t)ip_temp);
+				fd_end = fd_end + 1;
+				break;
+			case RTM_NEWROUTE:			
+				for (i = 0; i < ctx->num_nhs; i++) { 
+					nh = &ctx->nhs[i];
+					if (nh->gateway && nh->if_index) {
 
-  for (i = 0; i < ctx->num_nhs; i++) { 
-    nh = &ctx->nhs[i];
-    fd.gateway_ip = 0;
-    fd.port = 0;
+						if (nh->if_index <= 1) 
+							continue;
+						temp = get_if_number(if_indextoname(nh->if_index, ifname));
+						memset(ifname, 0, sizeof(ifname));
+						if(strcmp(br_name, "br-dreamer") == 0)
+							sprintf(ifname, "eth%d", temp);
+						else
+							sprintf(ifname, "%s-eth%d", br_name, temp);
+						fd_end->port = get_port_number(ifname);
+						ip_temp = ((struct in_addr*) RTA_DATA(ctx->dest))->s_addr; 
+						fd_end->ip = ntohl((uint32_t)ip_temp);
+						ip_temp = ((struct in_addr*) RTA_DATA(nh->gateway))->s_addr;
+						fd_end->gateway_ip = ntohl((uint32_t)ip_temp);
+						fd_end = fd_end + 1;
+					}
+				}
+				break;		
+	}
+	
+	/*
+	 * Flow pushing
+	 *
+	 */
+	while(fd_start != fd_end){
+		fd_end = fd_end - 1;
+		switch (hdr->nlmsg_type) {
+			case RTM_DELROUTE:			
+				of_del_flow(fd_end);
+				continue;
+			case RTM_NEWROUTE:			
+				of_add_flow(fd_end);
+				continue;		
+		}
+	}
 
-    if (nh->gateway) {
-      fd.gateway_ip = ((struct in_addr*) RTA_DATA(nh->gateway))->s_addr ;
-      printf("Gateway addr %s/%d \n",addr_to_s(rtmsg->rtm_family, RTA_DATA(nh->gateway)), rtmsg->rtm_dst_len);
-    }
 
-    if (nh->if_index) {
-      char ifname[255];
-      fd.port = nh->if_index;
-      printf("Via interface %s index: %d\n", if_indextoname(nh->if_index, ifname), nh->if_index);
-      
-      if (nh->if_index <= 1) 
-        continue;
+	if(fd_end != NULL)
+		free(fd_end);
 
-      of_add_flow(&fd);
 
-    }
-    
-  }
-
-  return 1;
+	return 1;
 }
-
 
 /*
  * print_netlink_msg_ctx
  */
 void
-print_netlink_msg_ctx (netlink_msg_ctx_t *ctx)
-{
-  char buf[1024];
-  
-  netlink_msg_ctx_snprint(ctx, buf, sizeof(buf));
-  printf("%s\n", buf);
+print_netlink_msg_ctx (netlink_msg_ctx_t *ctx){
+	char buf[1024];
+	int level = 1;
+	struct rtmsg *rtmsg = ctx->rtmsg;
+	netlink_msg_ctx_snprint(ctx, buf, sizeof(buf));
+	if ( rtmsg->rtm_dst_len != 32 ) {
+		log_to_file(2, "No Loopback prefix\n", rtmsg->rtm_dst_len);
+		level=2;
+	}
+	log_to_file(level, "%s\n", buf);
 }
 
 /*
@@ -642,15 +645,15 @@ parse_netlink_msg (char *buf, size_t buf_len)
 
       parse_route_msg(ctx);
       if (ctx->err_msg) {
-	err_msg("Error parsing route message: %s", ctx->err_msg);
+	log_to_file(-1, "Error parsing route message: %s\n", ctx->err_msg);
       }
 
-      // print_netlink_msg_ctx(ctx);
+      print_netlink_msg_ctx(ctx);
       process_netlink_msg_ctx(ctx);
       break;
 
     default:
-      trace(1, "Ignoring unknown netlink message - Type: %d", hdr->nlmsg_type);
+      log_to_file( 1, "Ignoring unknown netlink message - Type: %d\n", hdr->nlmsg_type);
     }
 
     netlink_msg_ctx_cleanup(ctx);
@@ -663,11 +666,11 @@ parse_netlink_msg (char *buf, size_t buf_len)
 void 
 process_fpm_msg (fpm_msg_hdr_t *hdr)
 {
-  trace(1, "FPM message - Type: %d, Length %d", hdr->msg_type,
+  log_to_file( 1, "FPM message - Type: %d, Length %d\n", hdr->msg_type,
 	ntohs(hdr->msg_len));
 
   if (hdr->msg_type != FPM_MSG_TYPE_NETLINK) {
-    warn("Unknown fpm message type %u", hdr->msg_type);
+    log_to_file(0, "Unknown fpm message type %u\n", hdr->msg_type);
     return;
   }
 
@@ -694,22 +697,77 @@ fpm_serve ()
   }
 }
 
-int main (void)
-{
-  int sock;
+int parse_cmd_line(int argc, char **argv){
+	
+	int index;
+	int c;
+  	opterr = 0;
+	
+  	while ((c = getopt (argc, argv, "b:")) != -1)
 
-  memset(glob, 0, sizeof(*glob));
+		switch (c){
+			case 'b':
+			sprintf(br_name, "%s", optarg);
+			break;
+		
+			case '?':
+			if (optopt == 'b')
+				fprintf (stderr, "Option -%c requires an argument.\n", optopt);
+			else if (isprint (optopt))
+				fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+			else
+				fprintf (stderr, "Unknown option character `\\x%x'.\n", optopt);
+			return 1;
 
-  if (!create_listen_sock(FPM_DEFAULT_PORT, &glob->server_sock)) {
-    exit(1);
-  }
+			default:
+			fprintf (stderr, "ERROR cmd line - Please specify -b bridgename\n");
+			return 1;
+		}
 
-  /*
-   * Server forever.
-   */
-  while (1) {
-    glob->sock = accept_conn(glob->server_sock);
-    fpm_serve();
-    trace(1, "Done serving client");
-  }
+	for (index = optind; index < argc; index++)
+		printf ("Non-option argument %s\n", argv[index]);
+
+	if (strcmp(br_name,"") == 0){
+		fprintf (stderr, "ERROR cmd line - Please specify -b bridgename\n");
+		return 1;
+	}
+
+	return 0;		
+}
+
+int main (int argc, char **argv){
+
+ 	if (parse_cmd_line(argc, argv) != 0){
+		exit(1);
+	}
+
+	log_to_file(1, "Loading Mapping File...\n");
+	load_map();
+
+	mapping* s, *tmp = NULL;
+	s = (mapping*)malloc(sizeof(mapping));
+
+	HASH_ITER(hh, maps, s, tmp) {
+		log_to_file(1, "%s -> %s\n", s->ip, s->mac);
+    }
+
+	int sock;
+
+	memset(glob, 0, sizeof(*glob));
+
+	if (!create_listen_sock(FPM_DEFAULT_PORT, &glob->server_sock)) {
+		exit(1);
+	}
+
+	char loopback[256];
+	get_loopback_address(loopback);
+	loopback_to_mac(loopback, mac);
+	of_bootstrap_flow(loopback);
+
+	while (1) {
+		glob->sock = accept_conn(glob->server_sock);
+		fpm_serve();
+		log_to_file( 1, "Done serving client\n");
+	}
+	
 }
