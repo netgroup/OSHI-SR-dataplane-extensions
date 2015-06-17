@@ -80,6 +80,7 @@ void get_loopback_address(char * loopback){
 		}
 		while (fgets(loopback, 256, fp) != NULL);
 		loopback[strlen(loopback)-1] = '\0';
+		pclose(fp);
 	}
 	pclose(fp);
 }
